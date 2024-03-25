@@ -2,10 +2,14 @@ import {Ace} from "ace-code";
 import {BaseTooltip} from "./base-tooltip";
 
 export class SignatureTooltip extends BaseTooltip {
-    
+    private $editor : Ace.Editor;
+
     registerEditor(editor: Ace.Editor) {
+        this.$editor?.off("changeSelection", this.onChangeSelection);
+
+        this.$editor = editor;
         // @ts-ignore
-        editor.on("changeSelection", () => this.onChangeSelection(editor));
+        editor.on("changeSelection", this.onChangeSelection);
     }
     
     update(editor: Ace.Editor) {
@@ -64,8 +68,11 @@ export class SignatureTooltip extends BaseTooltip {
         });
     }
     
-
-    onChangeSelection = (editor: Ace.Editor) => {
-        this.update(editor);
+    onChangeSelection = () => {
+        this.update(this.$editor);
     };
+
+    dispose() {
+        this.$editor.off("changeSelection", this.onChangeSelection);
+    }
 }

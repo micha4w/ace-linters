@@ -1,5 +1,7 @@
 "use strict";
 
+import type { Ace } from "ace-code";
+
 /*
 Potential improvements:
 - use binary search when looking for hover match
@@ -7,15 +9,16 @@ Potential improvements:
 //taken from ace-code with small changes
 export class MarkerGroup {
     private markers: any[];
-    private session: any;
+    private session: Ace.EditSession;
+    private id: number;
     
     // this caps total amount of markers at 10K
     MAX_MARKERS = 10000;
 
-    constructor(session) {
+    constructor(session : Ace.EditSession) {
         this.markers = [];
         this.session = session;
-        session.addDynamicMarker(this);
+        this.id = session.addDynamicMarker(this).id;
     }
 
     /**
@@ -99,4 +102,7 @@ export class MarkerGroup {
         }
     }
 
+    dispose() {
+        this.session.removeMarker(this.id);
+    }
 }
