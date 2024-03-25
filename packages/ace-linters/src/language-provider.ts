@@ -12,7 +12,7 @@ import {
     toCompletions, toMarkerGroupItem,
     toRange, toResolvedCompletion,
     toTooltip
-} from "./type-converters/lsp/lsp-converters";
+} from "./type-converters/lsp-converters";
 import * as lsp from "vscode-languageserver-protocol";
 
 import showdown from "showdown";
@@ -30,11 +30,6 @@ import {
 import {MarkerGroup} from "./ace/marker_group";
 import {AceRange} from "./ace/range-singleton";
 import {HoverTooltip} from "./ace/hover-tooltip";
-import {
-    DecodedSemanticTokens,
-    mergeTokens,
-    parseSemanticTokens
-} from "./type-converters/lsp/semantic-tokens";
 
 export class LanguageProvider {
     activeEditor: Ace.Editor;
@@ -44,13 +39,15 @@ export class LanguageProvider {
     editors: Ace.Editor[] = [];
     options: ProviderOptions;
     private $hoverTooltip: HoverTooltip;
+    private $completer?: Ace.Completer = undefined;
+    private $eventListeners: { event: string; target: { on: (...args) => any, off: (...args) => any }, callback: (...args) => any }[] = [];
 
     constructor(messageController: IMessageController, options?: ProviderOptions) {
         this.$messageController = messageController;
         this.setProviderOptions(options);
         this.$signatureTooltip = new SignatureTooltip(this);
     }
-    
+
     /**
      *  Creates LanguageProvider using our transport protocol with ability to register different services on same
      *  webworker
@@ -101,6 +98,11 @@ export class LanguageProvider {
         }
         messageController = new MessageController(worker);
         return new LanguageProvider(messageController, options);
+    }
+
+    private $listen(target: { on: (...args) => any, off: (...args) => any }, event: string, callback: (...args) => any) {
+        target.on(event, callback);
+        this.$eventListeners.push({ target, event, callback });
     }
 
     setProviderOptions(options?: ProviderOptions) {
@@ -155,26 +157,27 @@ export class LanguageProvider {
         AceRange.getConstructor(editor);
 
         editor.setOption("useWorker", false);
-        editor.on("changeSession", ({session}) => this.$registerSession(session, editor));
+        this.$listen(editor, "changeSession", ({ session }) => this.$registerSession(session, editor));
         if (this.options.functionality!.completion) {
             this.$registerCompleters(editor);
         }
         this.activeEditor ??= editor;
-        editor.on("focus", () => {
+        this.$listen(editor, "focus", () => {
             this.activeEditor = editor;
         });
 
         if (this.options.functionality!.documentHighlights) {
             var $timer
             // @ts-ignore
-            editor.on("changeSelection", () => {
+            this.$listen(editor, "changeSelection", () => {
                 if (!$timer)
                     $timer =
                         setTimeout(() => {
                             let cursor = editor.getCursorPosition();
                             let sessionLanguageProvider = this.$getSessionLanguageProvider(editor.session);
+                            if (sessionLanguageProvider)
+                                this.$messageController.findDocumentHighlights(this.$getFileName(editor.session), fromPoint(cursor), sessionLanguageProvider.$applyDocumentHighlight);
 
-                            this.$messageController.findDocumentHighlights(this.$getFileName(editor.session), fromPoint(cursor), sessionLanguageProvider.$applyDocumentHighlight);
                             $timer = undefined;
                         }, 50);
             });
@@ -331,7 +334,7 @@ export class LanguageProvider {
 
 
     $registerCompleters(editor: Ace.Editor) {
-        let completer: Ace.Completer = {
+        this.$completer : Ace.Completer = {
             getCompletions: async (editor, session, pos, prefix, callback) => {
                 this.$getSessionLanguageProvider(session).$sendDeltaQueue(() => {
                     this.doComplete(editor, session, (completions) => {
@@ -339,7 +342,7 @@ export class LanguageProvider {
                         if (!completions)
                             return;
                         completions.forEach((item) => {
-                            item.completerId = completer.id;
+                            item.completerId = this.$completer!.id;
                             item["fileName"] = fileName
                         });
                         callback(null, CommonConverter.normalizeRanges(completions));
@@ -347,7 +350,7 @@ export class LanguageProvider {
                 });
             },
             getDocTooltip: (item: Ace.Completion) => {
-                if (this.options.functionality!.completionResolve && !item["isResolved"] && item.completerId === completer.id) {
+                if (this.options.functionality!.completionResolve && !item["isResolved"] && item.completerId === this.$completer!.id) {
                     this.doResolve(item, (completionItem?) => {
                         item["isResolved"] = true;
                         if (!completionItem)
@@ -371,20 +374,36 @@ export class LanguageProvider {
         }
         if (this.options.functionality!.completion && this.options.functionality!.completion.overwriteCompleters) {
             editor.completers = [
-                completer
+                this.$completer!
             ];
         } else {
             if (!editor.completers) {
                 editor.completers = [];
             }
-            editor.completers.push(completer);
+            editor.completers.push(this.$completer!);
         }
     }
 
     dispose() {
-        this.$messageController.dispose(() => {
-            this.$messageController.$worker.terminate();
-        })
+        if (this.$completer) {
+            this.editors.forEach((editor) => {
+                editor.completers.filter((completer) => completer != this.$completer)
+            })
+        }
+
+        this.$signatureTooltip.dispose();
+
+        this.$eventListeners.forEach(listener => {
+            listener.target.off(listener.event, listener.callback);
+        });
+
+        Promise.all(Object.values(this.$sessionLanguageProviders).map((sessionProvider) =>
+            new Promise((res) => sessionProvider.closeDocument(res))
+        )).then(() => {
+            this.$messageController.dispose(() => {
+                this.$messageController.$worker.terminate();
+            })
+        });
     }
 
     /**
@@ -415,9 +434,9 @@ class SessionLanguageProvider {
         occurrenceMarkers: MarkerGroup | null,
         diagnosticMarkers: MarkerGroup | null
     } = {
-        occurrenceMarkers: null,
-        diagnosticMarkers: null
-    }
+            occurrenceMarkers: null,
+            diagnosticMarkers: null
+        }
 
     private extensions = {
         "typescript": "ts",
@@ -483,7 +502,7 @@ class SessionLanguageProvider {
             return bgTokenizer.lines[row] = data.tokens;
         }
     }
-    
+
     private $connected = (capabilities: { [serviceName: string]: lsp.ServerCapabilities }) => {
         this.$isConnected = true;
         // @ts-ignore
@@ -692,6 +711,12 @@ class SessionLanguageProvider {
     };
 
     closeDocument(callback?) {
+        this.session.off("changeMode", this.$changeMode);
+        this.session.doc.off("change", this.$changeListener);
         this.$messageController.closeDocument(this.fileName, callback);
+
+        this.state.diagnosticMarkers?.dispose();
+        this.state.occurrenceMarkers?.dispose();
+        this.session.clearAnnotations();
     }
 }
