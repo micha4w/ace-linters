@@ -10,6 +10,8 @@ export declare class LanguageProvider {
     editors: Ace.Editor[];
     options: ProviderOptions;
     private $hoverTooltip;
+    private $completer?;
+    private $eventListeners;
     constructor(messageController: IMessageController, options?: ProviderOptions);
     /**
      *  Creates LanguageProvider using our transport protocol with ability to register different services on same
@@ -26,6 +28,7 @@ export declare class LanguageProvider {
         } | true;
     }, options?: ProviderOptions): LanguageProvider;
     static fromCdn(cdnUrl: string, options?: ProviderOptions): LanguageProvider;
+    private $listen;
     private $registerSession;
     private $getSessionLanguageProvider;
     private $getFileName;

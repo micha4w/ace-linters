@@ -9,7 +9,7 @@
     "build:eslint-linter-bundle": "cd ../eslint-linter-bundle && npm run build",
     "build:dependencies": "npm run build:yaml-language-server && npm run build:eslint-linter-bundle",
     "build": "npm run clean && npm run build:dependencies && webpack --mode=production",
-    "build-dev": "npm run clean && npm run build:dependencies && webpack --mode=development",
+    "build-dev": "webpack --mode=development",
 
     "build-test": "npm run build && webpack --name=test",
     "start-test-server": "npm run build-test && http-server --cors='*' tests/ui/dist",

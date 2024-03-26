@@ -461,7 +461,8 @@ class ServiceManager {
             const capabilities = el.serviceCapabilities;
             switch(feature){
                 case "hover":
-                    return capabilities.hoverProvider == true;
+                    var _capabilities_hoverProvider;
+                    return capabilities.hoverProvider == true || typeof capabilities.hoverProvider == 'object' && ((_capabilities_hoverProvider = capabilities.hoverProvider) === null || _capabilities_hoverProvider === void 0 ? void 0 : _capabilities_hoverProvider.workDoneProgress) == true;
                 case "completion":
                     return capabilities.completionProvider != undefined;
                 case "completionResolve":
