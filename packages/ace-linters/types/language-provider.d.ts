@@ -10,6 +10,8 @@ export declare class LanguageProvider {
     editors: Ace.Editor[];
     options: ProviderOptions;
     private $hoverTooltip;
+    private $completer?;
+    private $eventListeners;
     constructor(messageController: IMessageController, options?: ProviderOptions);
     /**
      *  Creates LanguageProvider using our transport protocol with ability to register different services on same

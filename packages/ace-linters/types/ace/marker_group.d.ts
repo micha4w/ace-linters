@@ -1,8 +1,10 @@
+import type { Ace } from "ace-code";
 export declare class MarkerGroup {
     private markers;
     private session;
+    private id;
     MAX_MARKERS: number;
-    constructor(session: any);
+    constructor(session: Ace.EditSession);
     /**
      * Finds the first marker containing pos
      * @param {Position} pos
@@ -23,4 +25,5 @@ export declare class MarkerGroup {
      */
     setMarkers(markers: any): void;
     update(html: any, markerLayer: any, session: any, config: any): void;
+    dispose(): void;
 }
