@@ -10,7 +10,7 @@ export declare class LanguageProvider {
     editors: Ace.Editor[];
     options: ProviderOptions;
     private $hoverTooltip;
-    private $completer?;
+    private $completers;
     private $eventListeners;
     constructor(messageController: IMessageController, options?: ProviderOptions);
     /**
