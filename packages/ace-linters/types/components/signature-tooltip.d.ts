@@ -5,6 +5,7 @@ export declare class SignatureTooltip extends BaseTooltip {
     registerEditor(editor: Ace.Editor): void;
     update(editor: Ace.Editor): void;
     provideSignatureHelp: () => void;
-    onChangeSelection: (editor: Ace.Editor) => void;
+    onChangeSelection: () => void;
+    private $changeListener;
     dispose(): void;
 }

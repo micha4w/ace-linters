@@ -38,6 +38,7 @@ export declare class LanguageProvider {
     static fromCdn(cdnUrl: string, options?: ProviderOptions, includeDefaultLinters?: {
         [name in SupportedServices]?: boolean;
     } | boolean): LanguageProvider;
+    private $listen;
     setProviderOptions(options?: ProviderOptions): void;
     private $registerSession;
     private $getSessionLanguageProvider;
