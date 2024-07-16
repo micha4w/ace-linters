@@ -44,7 +44,7 @@ export class LanguageProvider {
     editors: Ace.Editor[] = [];
     options: ProviderOptions;
     private $hoverTooltip: HoverTooltip;
-    private $completer?: Ace.Completer = undefined;
+    private $completers: [Ace.Editor, Ace.Completer][] = [];
     private $eventListeners: { event: string; target: { on: (...args) => any, off: (...args) => any }, callback: (...args) => any }[] = [];
 
     constructor(messageController: IMessageController, options?: ProviderOptions) {
@@ -339,78 +339,60 @@ export class LanguageProvider {
 
 
     $registerCompleters(editor: Ace.Editor) {
-        if (!this.$completer) {
-            this.$completer = {
-                getCompletions: async (editor, session, pos, prefix, callback) => {
-                    this.$getSessionLanguageProvider(session).$sendDeltaQueue(() => {
-                        this.doComplete(editor, session, (completions) => {
-                            let fileName = this.$getFileName(session);
-                            if (!completions)
-                                return;
-                            completions.forEach((item) => {
-                                item.completerId = this.$completer!.id;
-                                item["fileName"] = fileName
-                            });
-                            callback(null, CommonConverter.normalizeRanges(completions));
+        let completer : Ace.Completer = {
+            getCompletions: async (editor, session, pos, prefix, callback) => {
+                this.$getSessionLanguageProvider(session).$sendDeltaQueue(() => {
+                    this.doComplete(editor, session, (completions) => {
+                        let fileName = this.$getFileName(session);
+                        if (!completions)
+                            return;
+                        completions.forEach((item) => {
+                            item.completerId = completer!.id;
+                            item["fileName"] = fileName
                         });
+                        callback(null, CommonConverter.normalizeRanges(completions));
                     });
-                },
-                getDocTooltip: (item: Ace.Completion) => {
-                    if (this.options.functionality!.completionResolve && !item["isResolved"] && item.completerId === this.$completer!.id) {
-                        this.doResolve(item, (completionItem?) => {
-                            item["isResolved"] = true;
-                            if (!completionItem)
-                                return;
-                            let completion = toResolvedCompletion(item, completionItem);
-                            item.docText = completion.docText;
-                            if (completion.docHTML) {
-                                item.docHTML = completion.docHTML;
-                            } else if (completion["docMarkdown"]) {
-                                item.docHTML = CommonConverter.cleanHtml(this.options.markdownConverter!.makeHtml(completion["docMarkdown"]));
-                            }
-                        })
-                    }
-                    return item;
-                },
-                id: "lspCompleters"
-            };
-        }
+                });
+            },
+            getDocTooltip: (item: Ace.Completion) => {
+                if (this.options.functionality!.completionResolve && !item["isResolved"] && item.completerId === completer!.id) {
+                    this.doResolve(item, (completionItem?) => {
+                        item["isResolved"] = true;
+                        if (!completionItem)
+                            return;
+                        let completion = toResolvedCompletion(item, completionItem);
+                        item.docText = completion.docText;
+                        if (completion.docHTML) {
+                            item.docHTML = completion.docHTML;
+                        } else if (completion["docMarkdown"]) {
+                            item.docHTML = CommonConverter.cleanHtml(this.options.markdownConverter!.makeHtml(completion["docMarkdown"]));
+                        }
+                        if (editor["completer"] && editor["completer"].completions) {
+                            editor["completer"].updateDocTooltip();
+                        }
+                    })
+                }
+                return item;
+            },
+            id: "lspCompleters"
+        };
+
         if (this.options.functionality!.completion && this.options.functionality!.completion.overwriteCompleters) {
             editor.completers = [
-                this.$completer!
+                completer
             ];
         } else {
             if (!editor.completers) {
                 editor.completers = [];
             }
-            editor.completers.push(this.$completer!);
+            editor.completers.push(completer);
         }
+        this.$completers.push([editor, completer]);
     }
 
     dispose() {
-        if (this.$completer) {
-            this.editors.forEach((editor) => {
-                editor.completers.filter((completer) => completer != this.$completer)
-            })
-        }
-
-        this.$signatureTooltip.dispose();
-
-        this.$eventListeners.forEach(listener => {
-            listener.target.off(listener.event, listener.callback);
-        });
-
-        Promise.all(Object.values(this.$sessionLanguageProviders).map((sessionProvider) =>
-            new Promise((res) => sessionProvider.closeDocument(res))
-        )).then(() => {
-            this.$messageController.dispose(() => {
-                this.$messageController.$worker.terminate();
-            })
-        });
-        if (this.$completer) {
-            this.editors.forEach((editor) => {
-                editor.completers.filter((completer) => completer != this.$completer)
-            })
+        for (const [editor, my_completer] of this.$completers) {
+            editor.completers = editor.completers.filter((completer) => completer != my_completer);
         }
 
         this.$signatureTooltip.dispose();
