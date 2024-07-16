@@ -12,7 +12,7 @@ import {
     toCompletions, toMarkerGroupItem,
     toRange, toResolvedCompletion,
     toTooltip
-} from "./type-converters/lsp-converters";
+} from "./type-converters/lsp/lsp-converters";
 import * as lsp from "vscode-languageserver-protocol";
 
 import showdown from "showdown";
@@ -30,6 +30,11 @@ import {
 import {MarkerGroup} from "./ace/marker_group";
 import {AceRange} from "./ace/range-singleton";
 import {HoverTooltip} from "./ace/hover-tooltip";
+import {
+    DecodedSemanticTokens,
+    mergeTokens,
+    parseSemanticTokens
+} from "./type-converters/lsp/semantic-tokens";
 
 export class LanguageProvider {
     activeEditor: Ace.Editor;
@@ -39,8 +44,6 @@ export class LanguageProvider {
     editors: Ace.Editor[] = [];
     options: ProviderOptions;
     private $hoverTooltip: HoverTooltip;
-    private $completer?: Ace.Completer = undefined;
-    private $eventListeners: { event: string; target: { on: (...args) => any, off: (...args) => any }, callback: (...args) => any }[] = [];
     private $completer?: Ace.Completer = undefined;
     private $eventListeners: { event: string; target: { on: (...args) => any, off: (...args) => any }, callback: (...args) => any }[] = [];
 
@@ -336,43 +339,41 @@ export class LanguageProvider {
 
 
     $registerCompleters(editor: Ace.Editor) {
-        this.$completer = {
-            getCompletions: async (editor, session, pos, prefix, callback) => {
-                this.$getSessionLanguageProvider(session).$sendDeltaQueue(() => {
-                    this.doComplete(editor, session, (completions) => {
-                        let fileName = this.$getFileName(session);
-                        if (!completions)
-                            return;
-                        completions.forEach((item) => {
-                            item.completerId = this.$completer!.id;
-                            item["fileName"] = fileName
+        if (!this.$completer) {
+            this.$completer = {
+                getCompletions: async (editor, session, pos, prefix, callback) => {
+                    this.$getSessionLanguageProvider(session).$sendDeltaQueue(() => {
+                        this.doComplete(editor, session, (completions) => {
+                            let fileName = this.$getFileName(session);
+                            if (!completions)
+                                return;
+                            completions.forEach((item) => {
+                                item.completerId = this.$completer!.id;
+                                item["fileName"] = fileName
+                            });
+                            callback(null, CommonConverter.normalizeRanges(completions));
                         });
-                        callback(null, CommonConverter.normalizeRanges(completions));
                     });
-                });
-            },
-            getDocTooltip: (item: Ace.Completion) => {
-                if (this.options.functionality!.completionResolve && !item["isResolved"] && item.completerId === this.$completer!.id) {
-                    this.doResolve(item, (completionItem?) => {
-                        item["isResolved"] = true;
-                        if (!completionItem)
-                            return;
-                        let completion = toResolvedCompletion(item, completionItem);
-                        item.docText = completion.docText;
-                        if (completion.docHTML) {
-                            item.docHTML = completion.docHTML;
-                        } else if (completion["docMarkdown"]) {
-                            item.docHTML = CommonConverter.cleanHtml(this.options.markdownConverter!.makeHtml(completion["docMarkdown"]));
-                        }
-                        if (editor["completer"]) {
-                            editor["completer"].updateDocTooltip();
-                        }
-
-                    })
-                }
-                return item;
-            },
-            id: "lspCompleters"
+                },
+                getDocTooltip: (item: Ace.Completion) => {
+                    if (this.options.functionality!.completionResolve && !item["isResolved"] && item.completerId === this.$completer!.id) {
+                        this.doResolve(item, (completionItem?) => {
+                            item["isResolved"] = true;
+                            if (!completionItem)
+                                return;
+                            let completion = toResolvedCompletion(item, completionItem);
+                            item.docText = completion.docText;
+                            if (completion.docHTML) {
+                                item.docHTML = completion.docHTML;
+                            } else if (completion["docMarkdown"]) {
+                                item.docHTML = CommonConverter.cleanHtml(this.options.markdownConverter!.makeHtml(completion["docMarkdown"]));
+                            }
+                        })
+                    }
+                    return item;
+                },
+                id: "lspCompleters"
+            };
         }
         if (this.options.functionality!.completion && this.options.functionality!.completion.overwriteCompleters) {
             editor.completers = [

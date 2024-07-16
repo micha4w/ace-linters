@@ -5,11 +5,11 @@ export class SignatureTooltip extends BaseTooltip {
     private $editor : Ace.Editor;
 
     registerEditor(editor: Ace.Editor) {
-        this.$editor?.off("changeSelection", this.onChangeSelection);
+        this.$editor?.off("changeSelection", this.$changeListener);
 
         this.$editor = editor;
         // @ts-ignore
-        editor.on("changeSelection", this.onChangeSelection);
+        editor.on("changeSelection", this.$changeListener);
     }
     
     update(editor: Ace.Editor) {
@@ -68,9 +68,10 @@ export class SignatureTooltip extends BaseTooltip {
         });
     }
     
-    onChangeSelection = (editor: Ace.Editor) => {
-        this.update(editor);
+    onChangeSelection = () => {
+        this.update(this.$editor);
     };
+    private $changeListener = this.onChangeSelection.bind(this);
 
     dispose() {
         this.$editor.off("changeSelection", this.onChangeSelection);
