@@ -41,6 +41,8 @@ export class LanguageProvider {
     private $hoverTooltip: HoverTooltip;
     private $completer?: Ace.Completer = undefined;
     private $eventListeners: { event: string; target: { on: (...args) => any, off: (...args) => any }, callback: (...args) => any }[] = [];
+    private $completer?: Ace.Completer = undefined;
+    private $eventListeners: { event: string; target: { on: (...args) => any, off: (...args) => any }, callback: (...args) => any }[] = [];
 
     constructor(messageController: IMessageController, options?: ProviderOptions) {
         this.$messageController = messageController;
@@ -334,7 +336,7 @@ export class LanguageProvider {
 
 
     $registerCompleters(editor: Ace.Editor) {
-        this.$completer : Ace.Completer = {
+        this.$completer = {
             getCompletions: async (editor, session, pos, prefix, callback) => {
                 this.$getSessionLanguageProvider(session).$sendDeltaQueue(() => {
                     this.doComplete(editor, session, (completions) => {
@@ -385,6 +387,25 @@ export class LanguageProvider {
     }
 
     dispose() {
+        if (this.$completer) {
+            this.editors.forEach((editor) => {
+                editor.completers.filter((completer) => completer != this.$completer)
+            })
+        }
+
+        this.$signatureTooltip.dispose();
+
+        this.$eventListeners.forEach(listener => {
+            listener.target.off(listener.event, listener.callback);
+        });
+
+        Promise.all(Object.values(this.$sessionLanguageProviders).map((sessionProvider) =>
+            new Promise((res) => sessionProvider.closeDocument(res))
+        )).then(() => {
+            this.$messageController.dispose(() => {
+                this.$messageController.$worker.terminate();
+            })
+        });
         if (this.$completer) {
             this.editors.forEach((editor) => {
                 editor.completers.filter((completer) => completer != this.$completer)
@@ -506,7 +527,6 @@ class SessionLanguageProvider {
     private $connected = (capabilities: { [serviceName: string]: lsp.ServerCapabilities }) => {
         this.$isConnected = true;
         // @ts-ignore
-
         this.setServerCapabilities(capabilities);
         if (this.$modeIsChanged)
             this.$changeMode();
